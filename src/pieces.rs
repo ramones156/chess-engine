@@ -8,8 +8,7 @@ use std::cmp::min;
 
 
 const SIZE: usize = 64;
-// top, bottom, left, right, top left, bottom right, top right, bottom left
-const OFFSETS: [isize; 8] = [8, -8, -1, 1, 9, -9, 7, -7];
+
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum PieceColor {
@@ -29,7 +28,7 @@ pub enum PieceType {
     EMPTY,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy,PartialEq)]
 pub struct Piece {
     pub piece_type: PieceType,
     pub piece_color: PieceColor,
@@ -93,56 +92,6 @@ impl Piece {
             }
         }
         pieces
-    }
-    pub fn get_moves(&self, rank: usize, file: usize) -> Vec<isize> {
-        let mut moves: Vec<isize> = vec![];
-
-        let north = file;
-        let south = 7 - file;
-        let east = 7 - rank;
-        let west = rank;
-        // north, south, west, east, nw, se, ne, sw
-        let direction_to_edge: [usize; 8] = [
-            north,
-            south,
-            east,
-            west,
-            min(north, west),
-            min(south, east),
-            min(north, east),
-            min(south, west)];
-
-        match self.piece_type {
-            PieceType::Knight => {}
-            PieceType::King => moves = Vec::from(OFFSETS),
-            PieceType::Queen => {
-                moves = Piece::sliding_piecs_moves(0, 8, direction_to_edge);
-            }
-            PieceType::Rook => {
-                moves = Piece::sliding_piecs_moves(0, 4, direction_to_edge);
-            }
-            PieceType::Bishop => {
-                moves = Piece::sliding_piecs_moves(4, 8, direction_to_edge);
-            }
-            PieceType::Pawn => {}
-            _ => {}
-        };
-        moves
-    }
-    fn sliding_piecs_moves(start: usize, end: usize, directions: [usize; 8]) -> Vec<isize> {
-        let mut moves: Vec<isize> = vec![];
-        let move_types = &OFFSETS[start..end];
-        let directions = &directions[start..end];
-        // iter through north,south,east,west
-        for x in 0..end - start {
-            // move a square until it hits the edge
-            println!("amount to edge: {}", directions[x]);
-            for y in 0..directions[x] {
-                let m: isize = move_types[x] * (1 + y as isize);
-                moves.push(m);
-            }
-        }
-        moves
     }
 }
 

@@ -5,13 +5,13 @@ use crate::pieces::{Piece, PieceType, PieceColor};
 use graphics::*;
 use graphics::rectangle::square;
 use piston::{GenericEvent, Button, MouseButton};
-use std::collections::HashMap;
-use std::collections::hash_map::RandomState;
-use std::borrow::Borrow;
+use std::cmp::min;
 
 extern crate piston_window;
 
 const SIZE: usize = 64;
+// top, bottom, left, right, top left, bottom right, top right, bottom left + 8 knight moves
+const OFFSETS: [isize; 16] = [8, -8, -1, 1, 9, -9, 7, -7, 6, 15, -6, -15, 17, 10, -17, -10];
 
 pub struct Board {
     // OpenGL drawing backend.
@@ -26,7 +26,7 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn render(&mut self, args: &RenderArgs, gl: &mut GlGraphics) {
+    pub fn render(&mut self, args: &RenderArgs) {
         let pieces = self.pieces;
 
         for i in 0..SIZE {
@@ -36,35 +36,33 @@ impl Board {
             let file = i / 8;
 
             let piece: Piece = pieces[i];
-            Board::draw_square(args, gl, piece, rank, file)
+            self.draw_square(args, piece, rank, file)
         }
 
         if let Some(i) = self.selected {
             // 0, 1, 2, 3, 4, 5, 6, 7
             let rank = i % 8;
             // 0, 0, 0, 0, 0, 0, 0, 1
-            let file = 7 - (i / 8);
-            Board::draw_square(args, gl, Piece::new(PieceType::EMPTY, PieceColor::NEITHER), rank, file);
-            Board::draw_move(self.selected_piece, rank, file, args, gl);
+            let file = (i / 8);
+            self.draw_square(args, Piece::default(), rank, 7 - file);
+            self.draw_move(7 - rank, 7 - file, args);
         }
         if let Some(i) = self.released {
             if self.selected_piece.piece_type != PieceType::EMPTY {
                 // original location
                 let orig = self.selected.unwrap();
-                println!("orig: {}, new: {}", orig, i);
+                // println!("orig: {}, new: {}", orig, i);
                 // 0, 1, 2, 3, 4, 5, 6, 7
                 let rank = i % 8;
                 // 0, 0, 0, 0, 0, 0, 0, 1
                 let file = 7 - (i / 8);
 
-                let moves = self.selected_piece.get_moves(7 - (orig % 8), 7 - (orig / 8));
+                let moves = Board::get_moves(self, self.selected_piece, 7 - (orig % 8), 7 - (orig / 8));
                 let translation = &(i as isize - orig as isize);
-                println!("trans: {}", translation);
-                for x in moves.iter() {
-                    println!("move possible: {}", x);
-                }
-                if moves.contains(translation) {
-                    Board::draw_square(args, gl, self.selected_piece, rank, file);
+                // println!("trans: {}", translation);
+                let target: Piece = self.pieces[63 - i];
+                if moves.contains(translation) && target.piece_color != self.selected_piece.piece_color {
+                    self.draw_square(args, self.selected_piece, rank, file);
                     // Input piece adn remove from original
                     self.pieces[63 - orig] = Piece::default();
                     self.pieces[63 - i] = self.selected_piece;
@@ -86,7 +84,7 @@ impl Board {
             let (x, y) = Board::calculate_coords(self.cursor_pos[0], self.cursor_pos[1]);
             // println!("Cell picked: {},{}", x, y);
             let i = (x - 1) + (y - 1) * 8;
-            // println!("index selected: {}", i);
+            println!("index selected: {}", i);
             let piece: Piece = self.pieces[63 - i];
             // println!("Piece: {}", i);
             if piece.piece_type != PieceType::EMPTY {
@@ -111,7 +109,7 @@ impl Board {
         // println!("Cursor pos: {},{}", x, y);
         (cell_x, cell_y)
     }
-    fn draw_square(args: &RenderArgs, gl: &mut GlGraphics, piece: Piece, rank: usize, file: usize) {
+    fn draw_square(&mut self, args: &RenderArgs, piece: Piece, rank: usize, file: usize) {
         let checker_square: [f64; 4] = rectangle::square(0.0, 0.0, 50.0);
         let white: [f32; 4] = color::hex("F0D9B5");
         let black: [f32; 4] = color::hex("946f51");
@@ -119,7 +117,7 @@ impl Board {
         let color_state = (rank + file) % 2 != 0;
         match piece.piece_type {
             PieceType::EMPTY => {
-                gl.draw(args.viewport(), |c, gl| {
+                self.gl.draw(args.viewport(), |c, gl| {
                     if color_state {
                         rectangle(black, checker_square, c.transform.trans(x, y), gl);
                     } else {
@@ -130,7 +128,7 @@ impl Board {
             _ => {
                 let image = Image::new().rect(square(x, y, 50.0));
                 let texture = piece.get_icon();
-                gl.draw(args.viewport(), |c, gl| {
+                self.gl.draw(args.viewport(), |c, gl| {
                     if color_state {
                         rectangle(black, checker_square, c.transform.trans(x, y), gl);
                     } else {
@@ -141,18 +139,80 @@ impl Board {
             }
         }
     }
-    fn draw_move(selected: Piece, rank: usize, file: usize, args: &RenderArgs, gl: &mut GlGraphics) {
-        let checker_square: [f64; 4] = rectangle::square(0.0, 0.0, 50.0);
-        let red = color::hex("9bc700");
-        let mut moves: Vec<isize> = selected.get_moves(rank, file);
+    fn draw_move(&mut self, rank: usize, file: usize, args: &RenderArgs) {
+        // println!("rank: {}, file: {}", rank, file);
+        let checker_square: [f64; 4] = rectangle::square(15.0, 15.0, 20.0);
+        let red = [199.0, 0.0, 0.0, 0.5];
+        let moves: Vec<isize> = self.get_moves(self.selected_piece, rank, file);
+        let pieces = self.pieces;
 
-        for i in moves.iter() {
-            let coord = (rank as isize + file as isize * 8) - i;
-            let (x, y) = (((coord as f64 % 8.0) * 50.0, (coord / 8) as f64 * 50.0));
-            // println!("x: {}, y: {}, coord: {},rank: {}, file: {}", x, y, coord, rank, file);
-            gl.draw(args.viewport(), |c, gl| {
-                rectangle(red, checker_square, c.transform.trans(x, y), gl);
+        for m in moves.iter() {
+            let coord: isize = (rank + (file + 1) * 8) as isize - *m;
+            let (x, y) = ((7 - coord % 8) as f64 * 50.0, ((coord / 8) - 1) as f64 * 50.0);
+            // println!("rank: {}, file: {}, index: {},move: {}", rank, file, coord, m);
+
+            self.gl.draw(args.viewport(), |c, gl| {
+                // rectangle(red, checker_square, c.transform.trans(x, y), gl);
+                ellipse(red, checker_square, c.transform.trans(x, y), gl);
             });
         }
+    }
+    fn get_moves(&self, piece: Piece, rank: usize, file: usize) -> Vec<isize> {
+        let mut moves: Vec<isize> = vec![];
+
+        let north = file;
+        let south = 7 - file;
+        let east = 7 - rank;
+        let west = rank;
+        // north, south, west, east, nw, se, ne, sw
+        let direction_to_edge: [usize; 8] = [
+            north,
+            south,
+            east,
+            west,
+            min(north, west),
+            min(south, east),
+            min(north, east),
+            min(south, west)];
+
+        match piece.piece_type {
+            PieceType::Knight => {
+                let directions = &direction_to_edge[4..8];
+                let offsets = &OFFSETS[8..16];
+                for i in 0..1 {
+                    let x_offset = offsets[i] % 8;
+                    let edge = directions[i / 2] as isize;
+                    println!("offset: {}, edge: {}", x_offset, edge);
+                    moves.push(offsets[i]);
+                }
+            }
+            PieceType::King => moves = Vec::from(&OFFSETS[0..8]),
+            PieceType::Queen => moves = self.sliding_piecs_moves(&direction_to_edge[0..8], &OFFSETS[0..8]),
+            PieceType::Rook => moves = self.sliding_piecs_moves(&direction_to_edge[0..4], &OFFSETS[0..8]),
+            PieceType::Bishop => moves = self.sliding_piecs_moves(&direction_to_edge[4..8], &OFFSETS[4..8]),
+            PieceType::Pawn => {
+                match piece.piece_color {
+                    PieceColor::WHITE => moves = Vec::from(&OFFSETS[0..1]),
+                    PieceColor::BLACK => moves = Vec::from(&OFFSETS[1..2]),
+                    _ => {}
+                }
+            }
+            _ => {}
+        };
+        moves
+    }
+    fn sliding_piecs_moves(&self, directions: &[usize], types: &[isize]) -> Vec<isize> {
+        let mut moves: Vec<isize> = vec![];
+        let directions = &directions;
+        // iter through north,south,east,west
+        for x in 0..directions.len() {
+            // move a square until it hits the edge
+            // println!("amount to edge: {}", directions[x]);
+            for y in 0..directions[x] {
+                let m: isize = types[x] * (1 + y as isize);
+                moves.push(m);
+            }
+        }
+        moves
     }
 }

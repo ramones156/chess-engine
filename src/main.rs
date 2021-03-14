@@ -34,7 +34,7 @@ fn main() {
             rows: 8,
             units: 50.0,
         },
-        pieces: Piece::load_from_fen("8/8/8/8/3rbkq1/8/8/8"),
+        pieces: Piece::load_from_fen("8/3n4/4q3/8/8/8/8/8"),
         moving_color: PieceColor::WHITE,
         selected: None,
         released: None,
@@ -43,12 +43,11 @@ fn main() {
     };
 
     let mut events = Events::new(EventSettings::new().lazy(true));
-    let mut gl = GlGraphics::new(opengl);
 
     while let Some(e) = events.next(&mut window) {
         board.event(&e);
         if let Some(args) = e.render_args() {
-            board.render(&args, &mut gl);
+            board.render(&args);
         }
     }
 }
