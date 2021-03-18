@@ -4,20 +4,19 @@ use std::path::Path;
 use opengl_graphics::Texture;
 use piston_window::TextureSettings;
 use std::collections::HashMap;
-use std::cmp::min;
 
 
 const SIZE: usize = 64;
 
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy,Debug)]
 pub enum PieceColor {
     BLACK,
     WHITE,
     NEITHER,
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy,Debug)]
 pub enum PieceType {
     King,
     Queen,
@@ -28,7 +27,7 @@ pub enum PieceType {
     EMPTY,
 }
 
-#[derive(Clone, Copy,PartialEq)]
+#[derive(Clone, Copy, PartialEq,Debug)]
 pub struct Piece {
     pub piece_type: PieceType,
     pub piece_color: PieceColor,
@@ -60,33 +59,35 @@ impl Piece {
 
         Texture::from_path(path, &TextureSettings::new()).unwrap()
     }
-    pub fn default_board() -> [Piece; 64] {
+    pub fn default_board() -> [Piece; SIZE] {
         Piece::load_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     }
+    //TODO this function currently loads right to left, top to bottom
+    // while FEN loads from left to right, top to bottom
     pub fn load_from_fen(fen: &str) -> [Piece; SIZE] {
         let dictionary: HashMap<char, Piece> = [
-            ('k', Piece::new(PieceType::King, PieceColor::WHITE)),
-            ('p', Piece::new(PieceType::Pawn, PieceColor::WHITE)),
-            ('n', Piece::new(PieceType::Knight, PieceColor::WHITE)),
-            ('b', Piece::new(PieceType::Bishop, PieceColor::WHITE)),
-            ('r', Piece::new(PieceType::Rook, PieceColor::WHITE)),
-            ('q', Piece::new(PieceType::Queen, PieceColor::WHITE)),
-            ('K', Piece::new(PieceType::King, PieceColor::BLACK)),
-            ('P', Piece::new(PieceType::Pawn, PieceColor::BLACK)),
-            ('N', Piece::new(PieceType::Knight, PieceColor::BLACK)),
-            ('B', Piece::new(PieceType::Bishop, PieceColor::BLACK)),
-            ('R', Piece::new(PieceType::Rook, PieceColor::BLACK)),
-            ('Q', Piece::new(PieceType::Queen, PieceColor::BLACK)),
+            ('k', Piece::new(PieceType::King, PieceColor::BLACK)),
+            ('p', Piece::new(PieceType::Pawn, PieceColor::BLACK)),
+            ('n', Piece::new(PieceType::Knight, PieceColor::BLACK)),
+            ('b', Piece::new(PieceType::Bishop, PieceColor::BLACK)),
+            ('r', Piece::new(PieceType::Rook, PieceColor::BLACK)),
+            ('q', Piece::new(PieceType::Queen, PieceColor::BLACK)),
+            ('K', Piece::new(PieceType::King, PieceColor::WHITE)),
+            ('P', Piece::new(PieceType::Pawn, PieceColor::WHITE)),
+            ('N', Piece::new(PieceType::Knight, PieceColor::WHITE)),
+            ('B', Piece::new(PieceType::Bishop, PieceColor::WHITE)),
+            ('R', Piece::new(PieceType::Rook, PieceColor::WHITE)),
+            ('Q', Piece::new(PieceType::Queen, PieceColor::WHITE)),
         ].iter().cloned().collect();
 
         let mut pieces = [Piece::default(); SIZE];
         let board = fen.split(' ').next().unwrap();
-
         let mut i: usize = 64;
         for symbol in board.chars() {
             if symbol.is_numeric() {
                 i -= symbol.to_digit(10).unwrap() as usize;
             } else if dictionary.contains_key(&symbol) {
+                // println!("Piece at index: {}", i);
                 i -= 1;
                 pieces[i] = *dictionary.get(&symbol).unwrap();
             }

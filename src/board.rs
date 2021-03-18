@@ -10,8 +10,8 @@ use std::cmp::min;
 extern crate piston_window;
 
 const SIZE: usize = 64;
-// top, bottom, left, right, top left, bottom right, top right, bottom left + 8 knight moves
-const OFFSETS: [isize; 16] = [8, -8, -1, 1, 9, -9, 7, -7, 6, 15, -6, -15, 17, 10, -17, -10];
+// top, bottom, left, right, top left, bottom right, top right, bottom left
+const OFFSETS: [isize; 8] = [8, -8, -1, 1, 9, -9, 7, -7];
 
 pub struct Board {
     // OpenGL drawing backend.
@@ -29,45 +29,38 @@ impl Board {
     pub fn render(&mut self, args: &RenderArgs) {
         let pieces = self.pieces;
 
-        for i in 0..SIZE {
-            // 0, 1, 2, 3, 4, 5, 6, 7
-            let rank = 7 - (i % 8);
-            // 0, 0, 0, 0, 0, 0, 0, 1
-            let file = i / 8;
-
+        for i in 0..64 {
+            let (rank, file) = Board::index_to_coords(i);
             let piece: Piece = pieces[i];
+            if piece.piece_type != PieceType::EMPTY {
+                // println!("rank: {}, file: {}", rank, file);
+            }
             self.draw_square(args, piece, rank, file)
         }
 
         if let Some(i) = self.selected {
-            // 0, 1, 2, 3, 4, 5, 6, 7
-            let rank = i % 8;
-            // 0, 0, 0, 0, 0, 0, 0, 1
-            let file = (i / 8);
-            self.draw_square(args, Piece::default(), rank, 7 - file);
-            self.draw_move(7 - rank, 7 - file, args);
+            let (rank, file) = Board::index_to_coords(i);
+            self.draw_square(args, Piece::default(), rank, file);
+            self.draw_move(rank, file, args);
         }
         if let Some(i) = self.released {
             if self.selected_piece.piece_type != PieceType::EMPTY {
                 // original location
                 let orig = self.selected.unwrap();
-                // println!("orig: {}, new: {}", orig, i);
-                // 0, 1, 2, 3, 4, 5, 6, 7
-                let rank = i % 8;
-                // 0, 0, 0, 0, 0, 0, 0, 1
-                let file = 7 - (i / 8);
-
-                let moves = Board::get_moves(self, self.selected_piece, 7 - (orig % 8), 7 - (orig / 8));
+                let (orig_x, orig_y) = Board::index_to_coords(orig);
+                let (rank, file) = Board::index_to_coords(i);
+                let moves = self.get_moves(self.selected_piece, orig_x, orig_y);
                 let translation = &(i as isize - orig as isize);
                 // println!("trans: {}", translation);
-                let target: Piece = self.pieces[63 - i];
+                let target: Piece = self.pieces[i];
                 if moves.contains(translation) && target.piece_color != self.selected_piece.piece_color {
                     self.draw_square(args, self.selected_piece, rank, file);
-                    // Input piece adn remove from original
-                    self.pieces[63 - orig] = Piece::default();
-                    self.pieces[63 - i] = self.selected_piece;
+                    // Input piece and remove from original
+                    self.pieces[orig] = Piece::default();
+                    self.pieces[i] = self.selected_piece;
                 } else {
-                    self.pieces[63 - orig] = self.selected_piece;
+                    println!("Illegal move");
+                    self.pieces[orig] = self.selected_piece;
                 }
                 // empty selection and release
                 self.selected_piece = Piece::default();
@@ -82,20 +75,21 @@ impl Board {
         }
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             let (x, y) = Board::calculate_coords(self.cursor_pos[0], self.cursor_pos[1]);
-            // println!("Cell picked: {},{}", x, y);
-            let i = (x - 1) + (y - 1) * 8;
-            println!("index selected: {}", i);
-            let piece: Piece = self.pieces[63 - i];
+            println!("Cell picked: {},{}", x - 1, y - 1);
+            let i = Board::coords_to_index(x - 1, y - 1);
+            // println!("index selected: {}", i);
+            let piece: Piece = self.pieces[i];
             // println!("Piece: {}", i);
             if piece.piece_type != PieceType::EMPTY {
+                println!("Piece found!");
                 self.selected = Some(i);
-                self.selected_piece = self.pieces[63 - i];
+                self.selected_piece = self.pieces[i];
             }
         }
         if let Some(Button::Mouse(MouseButton::Left)) = e.release_args() {
             let (x, y) = Board::calculate_coords(self.cursor_pos[0], self.cursor_pos[1]);
-            // println!("Cell picked: {},{}", x, y);
-            let i = (x - 1) + (y - 1) * 8;
+            // println!("Cell released: {},{}", x-1,y-1);
+            let i = Board::coords_to_index(x - 1, y - 1);
             // println!("index released: {}", i);
             if self.selected_piece.piece_type != PieceType::EMPTY {
                 self.released = Some(i);
@@ -113,7 +107,7 @@ impl Board {
         let checker_square: [f64; 4] = rectangle::square(0.0, 0.0, 50.0);
         let white: [f32; 4] = color::hex("F0D9B5");
         let black: [f32; 4] = color::hex("946f51");
-        let (x, y) = ((rank * 50) as f64, (file * 50) as f64);
+        let (x, y) = ((rank * 50) as f64, ((7 - file) * 50) as f64);
         let color_state = (rank + file) % 2 != 0;
         match piece.piece_type {
             PieceType::EMPTY => {
@@ -126,7 +120,7 @@ impl Board {
                 });
             }
             _ => {
-                let image = Image::new().rect(square(x, y, 50.0));
+                let image = Image::new().rect(square(0.0, 0.0, 50.0));
                 let texture = piece.get_icon();
                 self.gl.draw(args.viewport(), |c, gl| {
                     if color_state {
@@ -134,36 +128,40 @@ impl Board {
                     } else {
                         rectangle(white, checker_square, c.transform.trans(x, y), gl);
                     };
-                    image.draw(&texture, &c.draw_state, c.transform, gl);
+                    image.draw(&texture, &c.draw_state, c.transform.trans(x, y), gl);
                 });
             }
         }
     }
     fn draw_move(&mut self, rank: usize, file: usize, args: &RenderArgs) {
         // println!("rank: {}, file: {}", rank, file);
-        let checker_square: [f64; 4] = rectangle::square(15.0, 15.0, 20.0);
+        let checker_small: [f64; 4] = rectangle::square(15.0, 15.0, 20.0);
+        let checker: [f64; 4] = rectangle::square(0.0, 0.0, 50.0);
         let red = [199.0, 0.0, 0.0, 0.5];
-        let moves: Vec<isize> = self.get_moves(self.selected_piece, rank, file);
+        let moves = self.get_moves(self.selected_piece, rank, file);
         let pieces = self.pieces;
-
+//TODO testcases
         for m in moves.iter() {
-            let coord: isize = (rank + (file + 1) * 8) as isize - *m;
-            let (x, y) = ((7 - coord % 8) as f64 * 50.0, ((coord / 8) - 1) as f64 * 50.0);
-            // println!("rank: {}, file: {}, index: {},move: {}", rank, file, coord, m);
-
+            let index = (Board::coords_to_index(rank, file)).wrapping_add(*m as usize);
+            let (x, y) = Board::index_to_coords(index);
+            // println!("x: {}, y:{}, i:{}", x, y, index);
             self.gl.draw(args.viewport(), |c, gl| {
                 // rectangle(red, checker_square, c.transform.trans(x, y), gl);
-                ellipse(red, checker_square, c.transform.trans(x, y), gl);
+                if pieces[index].piece_type == PieceType::EMPTY {
+                    ellipse(red, checker_small, c.transform.trans(x as f64 * 50.0, (7 - y) as f64 * 50.0), gl);
+                } else {
+                    rectangle(red, checker, c.transform.trans(x as f64 * 50.0, (7 - y) as f64 * 50.0), gl);
+                }
             });
         }
     }
     fn get_moves(&self, piece: Piece, rank: usize, file: usize) -> Vec<isize> {
         let mut moves: Vec<isize> = vec![];
 
-        let north = file;
-        let south = 7 - file;
-        let east = 7 - rank;
-        let west = rank;
+        let north = 7 - file;
+        let south = file;
+        let east = rank;
+        let west = 7 - rank;
         // north, south, west, east, nw, se, ne, sw
         let direction_to_edge: [usize; 8] = [
             north,
@@ -173,23 +171,15 @@ impl Board {
             min(north, west),
             min(south, east),
             min(north, east),
-            min(south, west)];
+            min(south, west),
+        ];
 
         match piece.piece_type {
-            PieceType::Knight => {
-                let directions = &direction_to_edge[4..8];
-                let offsets = &OFFSETS[8..16];
-                for i in 0..1 {
-                    let x_offset = offsets[i] % 8;
-                    let edge = directions[i / 2] as isize;
-                    println!("offset: {}, edge: {}", x_offset, edge);
-                    moves.push(offsets[i]);
-                }
-            }
+            PieceType::Knight => {}
             PieceType::King => moves = Vec::from(&OFFSETS[0..8]),
-            PieceType::Queen => moves = self.sliding_piecs_moves(&direction_to_edge[0..8], &OFFSETS[0..8]),
-            PieceType::Rook => moves = self.sliding_piecs_moves(&direction_to_edge[0..4], &OFFSETS[0..8]),
-            PieceType::Bishop => moves = self.sliding_piecs_moves(&direction_to_edge[4..8], &OFFSETS[4..8]),
+            PieceType::Queen => moves = self.sliding_piecs_moves(&direction_to_edge[0..8], &OFFSETS[0..8], rank, file),
+            PieceType::Rook => moves = self.sliding_piecs_moves(&direction_to_edge[0..4], &OFFSETS[0..8], rank, file),
+            PieceType::Bishop => moves = self.sliding_piecs_moves(&direction_to_edge[4..8], &OFFSETS[4..8], rank, file),
             PieceType::Pawn => {
                 match piece.piece_color {
                     PieceColor::WHITE => moves = Vec::from(&OFFSETS[0..1]),
@@ -201,18 +191,58 @@ impl Board {
         };
         moves
     }
-    fn sliding_piecs_moves(&self, directions: &[usize], types: &[isize]) -> Vec<isize> {
+    fn sliding_piecs_moves(&self, edge: &[usize], offsets: &[isize], rank: usize, file: usize) -> Vec<isize> {
         let mut moves: Vec<isize> = vec![];
-        let directions = &directions;
+        let directions = &edge;
+        let pieces = self.pieces;
+        // println!("r:{},f:{}", rank, file);
         // iter through north,south,east,west
         for x in 0..directions.len() {
             // move a square until it hits the edge
             // println!("amount to edge: {}", directions[x]);
             for y in 0..directions[x] {
-                let m: isize = types[x] * (1 + y as isize);
-                moves.push(m);
+                let m: isize = offsets[x] * (1 + y as isize);
+                // println!("move: {}, index: {}", m, index);
+                let p: Piece = pieces[(Board::coords_to_index(rank, file)).wrapping_add(m as usize)];
+                if p.piece_color == self.selected_piece.piece_color { break; }
+                if p.piece_type == PieceType::EMPTY {
+                    moves.push(m);
+                } else if p.piece_color != self.selected_piece.piece_color {
+                    moves.push(m);
+                    break;
+                }
             }
         }
         moves
+    }
+    fn index_to_coords(index: usize) -> (usize, usize) {
+        // x: 0, 1, 2, 3, 4, 5, 6, 7, 0
+        // y: 0, 0, 0, 0, 0, 0, 0, 0, 1
+        (index % 8, index / 8)
+    }
+    fn coords_to_index(rank: usize, file: usize) -> usize {
+        //0, 1, 2, 3, 4, 5, 6, 7, 8, 9, .. 63
+        rank + file * 8
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::board::Board;
+
+    #[test]
+    fn to_coords_test() {
+        assert_eq!((0, 0), Board::index_to_coords(0));
+        assert_eq!((0, 1), Board::index_to_coords(8));
+        assert_eq!((1, 1), Board::index_to_coords(9));
+        assert_eq!((7, 7), Board::index_to_coords(63));
+    }
+
+    #[test]
+    fn to_index_test() {
+        assert_eq!(0, Board::coords_to_index(0, 0));
+        assert_eq!(8, Board::coords_to_index(0, 1));
+        assert_eq!(9, Board::coords_to_index(1, 1));
+        assert_eq!(63, Board::coords_to_index(7, 7));
     }
 }

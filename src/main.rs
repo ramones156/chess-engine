@@ -34,7 +34,7 @@ fn main() {
             rows: 8,
             units: 50.0,
         },
-        pieces: Piece::load_from_fen("8/3n4/4q3/8/8/8/8/8"),
+        pieces: Piece::load_from_fen("q7/3n4/4qR2/8/8/8/8/8"),
         moving_color: PieceColor::WHITE,
         selected: None,
         released: None,
