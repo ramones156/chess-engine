@@ -1,22 +1,22 @@
 extern crate find_folder;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use opengl_graphics::Texture;
 use piston_window::TextureSettings;
 use std::collections::HashMap;
-
+use std::fmt::Debug;
+use std::{fmt, env};
 
 const SIZE: usize = 64;
 
-
-#[derive(PartialEq, Clone, Copy,Debug)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum PieceColor {
     BLACK,
     WHITE,
     NEITHER,
 }
 
-#[derive(PartialEq, Clone, Copy,Debug)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum PieceType {
     King,
     Queen,
@@ -26,11 +26,18 @@ pub enum PieceType {
     Pawn,
     EMPTY,
 }
-
-#[derive(Clone, Copy, PartialEq,Debug)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Piece {
     pub piece_type: PieceType,
     pub piece_color: PieceColor,
+}
+
+impl Debug for Piece {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Piece")
+            .field("type", &self.piece_type)
+            .finish()
+    }
 }
 
 impl Piece {
@@ -40,21 +47,21 @@ impl Piece {
             piece_color,
         }
     }
-    pub fn get_icon(&self) -> Texture {
+    pub fn get_icon(self) -> Texture {
         let path = match (self.piece_type, self.piece_color) {
-            (PieceType::King, PieceColor::BLACK) => Path::new("assets/king_black.png"),
-            (PieceType::Queen, PieceColor::BLACK) => Path::new("./assets/queen_black.png"),
-            (PieceType::Rook, PieceColor::BLACK) => Path::new("./assets/rook_black.png"),
-            (PieceType::Bishop, PieceColor::BLACK) => Path::new("./assets/bishop_black.png"),
-            (PieceType::Knight, PieceColor::BLACK) => Path::new("./assets/knight_black.png"),
-            (PieceType::Pawn, PieceColor::BLACK) => Path::new("./assets/pawn_black.png"),
-            (PieceType::King, PieceColor::WHITE) => Path::new("./assets/king_white.png"),
-            (PieceType::Queen, PieceColor::WHITE) => Path::new("./assets/queen_white.png"),
-            (PieceType::Rook, PieceColor::WHITE) => Path::new("./assets/rook_white.png"),
-            (PieceType::Bishop, PieceColor::WHITE) => Path::new("./assets/bishop_white.png"),
-            (PieceType::Knight, PieceColor::WHITE) => Path::new("./assets/knight_white.png"),
-            (PieceType::Pawn, PieceColor::WHITE) => Path::new("./assets/pawn_white.png"),
-            _ => Path::new("")
+            (PieceType::King, PieceColor::BLACK) => Piece::load_resources("king_black.png"),
+            (PieceType::Queen, PieceColor::BLACK) => Piece::load_resources("queen_black.png"),
+            (PieceType::Rook, PieceColor::BLACK) => Piece::load_resources("rook_black.png"),
+            (PieceType::Bishop, PieceColor::BLACK) => Piece::load_resources("bishop_black.png"),
+            (PieceType::Knight, PieceColor::BLACK) => Piece::load_resources("knight_black.png"),
+            (PieceType::Pawn, PieceColor::BLACK) => Piece::load_resources("pawn_black.png"),
+            (PieceType::King, PieceColor::WHITE) => Piece::load_resources("king_white.png"),
+            (PieceType::Queen, PieceColor::WHITE) => Piece::load_resources("queen_white.png"),
+            (PieceType::Rook, PieceColor::WHITE) => Piece::load_resources("rook_white.png"),
+            (PieceType::Bishop, PieceColor::WHITE) => Piece::load_resources("bishop_white.png"),
+            (PieceType::Knight, PieceColor::WHITE) => Piece::load_resources("knight_white.png"),
+            (PieceType::Pawn, PieceColor::WHITE) => Piece::load_resources("pawn_white.png"),
+            _ => Piece::load_resources("")
         };
 
         Texture::from_path(path, &TextureSettings::new()).unwrap()
@@ -62,8 +69,6 @@ impl Piece {
     pub fn default_board() -> [Piece; SIZE] {
         Piece::load_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     }
-    //TODO this function currently loads right to left, top to bottom
-    // while FEN loads from left to right, top to bottom
     pub fn load_from_fen(fen: &str) -> [Piece; SIZE] {
         let dictionary: HashMap<char, Piece> = [
             ('k', Piece::new(PieceType::King, PieceColor::BLACK)),
@@ -81,7 +86,8 @@ impl Piece {
         ].iter().cloned().collect();
 
         let mut pieces = [Piece::default(); SIZE];
-        let board = fen.split(' ').next().unwrap();
+        let mut fen = fen.split(' ');
+        let board = fen.next().unwrap();
         let mut i: usize = 64;
         for symbol in board.chars() {
             if symbol.is_numeric() {
@@ -93,6 +99,17 @@ impl Piece {
             }
         }
         pieces
+    }
+
+    fn load_resources(filename:&str) -> PathBuf {
+        // See <https://doc.rust-lang.org/stable/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-crates>
+        let base_dir = option_env!("CARGO_MANIFEST_DIR").map_or_else(|| {
+            let exe_path = env::current_exe().expect("Failed to get exe path");
+            exe_path.parent().unwrap().to_path_buf()
+        }, |crate_dir| {
+            PathBuf::from(crate_dir)
+        });
+        base_dir.join("assets").join(filename)
     }
 }
 

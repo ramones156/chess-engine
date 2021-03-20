@@ -1,11 +1,10 @@
-use opengl_graphics::GlGraphics;
-use piston::input::{RenderArgs};
 use graphics::grid::Grid;
 use crate::pieces::{Piece, PieceType, PieceColor};
 use graphics::*;
 use graphics::rectangle::square;
-use piston::{GenericEvent, Button, MouseButton};
 use std::cmp::min;
+use self::piston_window::{RenderArgs, GenericEvent, Button, MouseButton, OpenGL};
+use opengl_graphics::GlGraphics;
 
 extern crate piston_window;
 
@@ -26,15 +25,28 @@ pub struct Board {
 }
 
 impl Board {
+    pub fn new(fen: &str) -> Board {
+        Board {
+            gl: GlGraphics::new(OpenGL::V3_2),
+            grid: Grid {
+                cols: 8,
+                rows: 8,
+                units: 50.0,
+            },
+            pieces: Piece::load_from_fen(fen),
+            moving_color: PieceColor::WHITE,
+            selected: None,
+            released: None,
+            selected_piece: Piece::default(),
+            cursor_pos: [0.0, 0.0],
+        }
+    }
     pub fn render(&mut self, args: &RenderArgs) {
         let pieces = self.pieces;
 
         for i in 0..64 {
             let (rank, file) = Board::index_to_coords(i);
             let piece: Piece = pieces[i];
-            if piece.piece_type != PieceType::EMPTY {
-                // println!("rank: {}, file: {}", rank, file);
-            }
             self.draw_square(args, piece, rank, file)
         }
 
@@ -75,13 +87,13 @@ impl Board {
         }
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             let (x, y) = Board::calculate_coords(self.cursor_pos[0], self.cursor_pos[1]);
-            println!("Cell picked: {},{}", x - 1, y - 1);
+            // println!("Cell picked: {},{}", x - 1, y - 1);
             let i = Board::coords_to_index(x - 1, y - 1);
             // println!("index selected: {}", i);
             let piece: Piece = self.pieces[i];
             // println!("Piece: {}", i);
             if piece.piece_type != PieceType::EMPTY {
-                println!("Piece found!");
+                // println!("Piece found!");
                 self.selected = Some(i);
                 self.selected_piece = self.pieces[i];
             }
@@ -162,7 +174,7 @@ impl Board {
         let south = file;
         let east = rank;
         let west = 7 - rank;
-        // north, south, west, east, nw, se, ne, sw
+        // north, south, east, west, nw, se, ne, sw
         let direction_to_edge: [usize; 8] = [
             north,
             south,
@@ -173,13 +185,12 @@ impl Board {
             min(north, east),
             min(south, west),
         ];
-
         match piece.piece_type {
             PieceType::Knight => {}
             PieceType::King => moves = Vec::from(&OFFSETS[0..8]),
-            PieceType::Queen => moves = self.sliding_piecs_moves(&direction_to_edge[0..8], &OFFSETS[0..8], rank, file),
-            PieceType::Rook => moves = self.sliding_piecs_moves(&direction_to_edge[0..4], &OFFSETS[0..8], rank, file),
-            PieceType::Bishop => moves = self.sliding_piecs_moves(&direction_to_edge[4..8], &OFFSETS[4..8], rank, file),
+            PieceType::Queen => moves = self.sliding_piecs_moves(&direction_to_edge[0..8], &OFFSETS[0..8]),
+            PieceType::Rook => moves = self.sliding_piecs_moves(&direction_to_edge[0..4], &OFFSETS[0..8]),
+            PieceType::Bishop => moves = self.sliding_piecs_moves(&direction_to_edge[4..8], &OFFSETS[4..8]),
             PieceType::Pawn => {
                 match piece.piece_color {
                     PieceColor::WHITE => moves = Vec::from(&OFFSETS[0..1]),
@@ -191,7 +202,7 @@ impl Board {
         };
         moves
     }
-    fn sliding_piecs_moves(&self, edge: &[usize], offsets: &[isize], rank: usize, file: usize) -> Vec<isize> {
+    fn sliding_piecs_moves(&self, edge: &[usize], offsets: &[isize]) -> Vec<isize> {
         let mut moves: Vec<isize> = vec![];
         let directions = &edge;
         let pieces = self.pieces;
@@ -203,7 +214,7 @@ impl Board {
             for y in 0..directions[x] {
                 let m: isize = offsets[x] * (1 + y as isize);
                 // println!("move: {}, index: {}", m, index);
-                let p: Piece = pieces[(Board::coords_to_index(rank, file)).wrapping_add(m as usize)];
+                let p: Piece = pieces[self.selected.unwrap().wrapping_add(m as usize)];
                 if p.piece_color == self.selected_piece.piece_color { break; }
                 if p.piece_type == PieceType::EMPTY {
                     moves.push(m);
@@ -221,13 +232,13 @@ impl Board {
         (index % 8, index / 8)
     }
     fn coords_to_index(rank: usize, file: usize) -> usize {
-        //0, 1, 2, 3, 4, 5, 6, 7, 8, 9, .. 63
+        // i: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, .. 63
         rank + file * 8
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod convert_tests {
     use crate::board::Board;
 
     #[test]
