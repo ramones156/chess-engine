@@ -16,11 +16,11 @@ pub struct Board {
     // OpenGL drawing backend.
     pub gl: GlGraphics,
     pub grid: Grid,
-    pub pieces: [Piece; SIZE],
+    pub pieces: [Option<Piece>; SIZE],
     pub moving_color: PieceColor,
     pub selected: Option<usize>,
     pub released: Option<usize>,
-    pub selected_piece: Piece,
+    pub selected_piece: Option<Piece>,
     pub cursor_pos: [f64; 2],
 }
 
@@ -33,52 +33,59 @@ impl Board {
                 rows: 8,
                 units: 50.0,
             },
-            pieces: Piece::load_from_fen(fen),
+            pieces: Piece::from_fen(fen),
             moving_color: PieceColor::WHITE,
             selected: None,
             released: None,
-            selected_piece: Piece::default(),
+            selected_piece: None,
             cursor_pos: [0.0, 0.0],
         }
     }
+    pub fn default_board() -> Self {
+        Board::new("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+    }
+
     pub fn render(&mut self, args: &RenderArgs) {
         let pieces = self.pieces;
 
         for i in 0..64 {
             let (rank, file) = Board::index_to_coords(i);
-            let piece: Piece = pieces[i];
+            let piece: Option<Piece> = pieces[i];
             self.draw_square(args, piece, rank, file)
         }
 
         if let Some(i) = self.selected {
             let (rank, file) = Board::index_to_coords(i);
-            self.draw_square(args, Piece::default(), rank, file);
+            self.draw_square(args, None, rank, file);
             self.draw_move(rank, file, args);
         }
         if let Some(i) = self.released {
-            if self.selected_piece.piece_type != PieceType::EMPTY {
+            if self.selected_piece != None && i < 64 {
                 // original location
                 let orig = self.selected.unwrap();
                 let (orig_x, orig_y) = Board::index_to_coords(orig);
                 let (rank, file) = Board::index_to_coords(i);
-                let moves = self.get_moves(self.selected_piece, orig_x, orig_y);
+                let moves = self.get_moves(self.selected_piece.unwrap(), orig_x, orig_y);
                 let translation = &(i as isize - orig as isize);
                 // println!("trans: {}", translation);
-                let target: Piece = self.pieces[i];
-                if moves.contains(translation) && target.piece_color != self.selected_piece.piece_color {
-                    self.draw_square(args, self.selected_piece, rank, file);
-                    // Input piece and remove from original
-                    self.pieces[orig] = Piece::default();
-                    self.pieces[i] = self.selected_piece;
+                let target: Option<Piece> = self.pieces[i];
+                if moves.contains(translation) {
+                    if target == None || (target.unwrap().piece_color != self.selected_piece.unwrap().piece_color) {
+                        self.draw_square(args, self.selected_piece, rank, file);
+                        // Input piece and remove from original
+                        self.pieces[orig] = None;
+                        self.pieces[i] = self.selected_piece;
+                    }
                 } else {
                     println!("Illegal move");
                     self.pieces[orig] = self.selected_piece;
                 }
+            }
                 // empty selection and release
-                self.selected_piece = Piece::default();
+                self.selected_piece = None;
                 self.selected = None;
                 self.released = None;
-            }
+
         }
     }
     pub fn event<E: GenericEvent>(&mut self, e: &E) {
@@ -90,9 +97,9 @@ impl Board {
             // println!("Cell picked: {},{}", x - 1, y - 1);
             let i = Board::coords_to_index(x - 1, y - 1);
             // println!("index selected: {}", i);
-            let piece: Piece = self.pieces[i];
+            let piece: Option<Piece> = self.pieces[i];
             // println!("Piece: {}", i);
-            if piece.piece_type != PieceType::EMPTY {
+            if piece != None {
                 // println!("Piece found!");
                 self.selected = Some(i);
                 self.selected_piece = self.pieces[i];
@@ -103,7 +110,7 @@ impl Board {
             // println!("Cell released: {},{}", x-1,y-1);
             let i = Board::coords_to_index(x - 1, y - 1);
             // println!("index released: {}", i);
-            if self.selected_piece.piece_type != PieceType::EMPTY {
+            if self.selected_piece != None {
                 self.released = Some(i);
             }
         }
@@ -115,31 +122,23 @@ impl Board {
         // println!("Cursor pos: {},{}", x, y);
         (cell_x, cell_y)
     }
-    fn draw_square(&mut self, args: &RenderArgs, piece: Piece, rank: usize, file: usize) {
+    fn draw_square(&mut self, args: &RenderArgs, piece: Option<Piece>, rank: usize, file: usize) {
         let checker_square: [f64; 4] = rectangle::square(0.0, 0.0, 50.0);
         let white: [f32; 4] = color::hex("F0D9B5");
         let black: [f32; 4] = color::hex("946f51");
         let (x, y) = ((rank * 50) as f64, ((7 - file) * 50) as f64);
-        let color_state = (rank + file) % 2 != 0;
-        match piece.piece_type {
-            PieceType::EMPTY => {
+        let color_state = if (rank + file) % 2 == 0 { black } else { white };
+        match piece {
+            None => {
                 self.gl.draw(args.viewport(), |c, gl| {
-                    if color_state {
-                        rectangle(black, checker_square, c.transform.trans(x, y), gl);
-                    } else {
-                        rectangle(white, checker_square, c.transform.trans(x, y), gl);
-                    };
+                    rectangle(color_state, checker_square, c.transform.trans(x, y), gl);
                 });
             }
             _ => {
                 let image = Image::new().rect(square(0.0, 0.0, 50.0));
-                let texture = piece.get_icon();
+                let texture = piece.unwrap().get_icon();
                 self.gl.draw(args.viewport(), |c, gl| {
-                    if color_state {
-                        rectangle(black, checker_square, c.transform.trans(x, y), gl);
-                    } else {
-                        rectangle(white, checker_square, c.transform.trans(x, y), gl);
-                    };
+                    rectangle(color_state, checker_square, c.transform.trans(x, y), gl);
                     image.draw(&texture, &c.draw_state, c.transform.trans(x, y), gl);
                 });
             }
@@ -150,7 +149,7 @@ impl Board {
         let checker_small: [f64; 4] = rectangle::square(15.0, 15.0, 20.0);
         let checker: [f64; 4] = rectangle::square(0.0, 0.0, 50.0);
         let red = [199.0, 0.0, 0.0, 0.5];
-        let moves = self.get_moves(self.selected_piece, rank, file);
+        let moves = self.get_moves(self.selected_piece.unwrap(), rank, file);
         let pieces = self.pieces;
 //TODO testcases
         for m in moves.iter() {
@@ -159,7 +158,7 @@ impl Board {
             // println!("x: {}, y:{}, i:{}", x, y, index);
             self.gl.draw(args.viewport(), |c, gl| {
                 // rectangle(red, checker_square, c.transform.trans(x, y), gl);
-                if pieces[index].piece_type == PieceType::EMPTY {
+                if pieces[index] == None {
                     ellipse(red, checker_small, c.transform.trans(x as f64 * 50.0, (7 - y) as f64 * 50.0), gl);
                 } else {
                     rectangle(red, checker, c.transform.trans(x as f64 * 50.0, (7 - y) as f64 * 50.0), gl);
@@ -195,10 +194,8 @@ impl Board {
                 match piece.piece_color {
                     PieceColor::WHITE => moves = Vec::from(&OFFSETS[0..1]),
                     PieceColor::BLACK => moves = Vec::from(&OFFSETS[1..2]),
-                    _ => {}
                 }
             }
-            _ => {}
         };
         moves
     }
@@ -214,11 +211,12 @@ impl Board {
             for y in 0..directions[x] {
                 let m: isize = offsets[x] * (1 + y as isize);
                 // println!("move: {}, index: {}", m, index);
-                let p: Piece = pieces[self.selected.unwrap().wrapping_add(m as usize)];
-                if p.piece_color == self.selected_piece.piece_color { break; }
-                if p.piece_type == PieceType::EMPTY {
+                let p: Option<Piece> = pieces[self.selected.unwrap().wrapping_add(m as usize)];
+                if p == None {
                     moves.push(m);
-                } else if p.piece_color != self.selected_piece.piece_color {
+                } else if p.unwrap().piece_color == self.selected_piece.unwrap().piece_color {
+                    break;
+                } else if p.unwrap().piece_color != self.selected_piece.unwrap().piece_color {
                     moves.push(m);
                     break;
                 }
@@ -255,5 +253,42 @@ mod convert_tests {
         assert_eq!(8, Board::coords_to_index(0, 1));
         assert_eq!(9, Board::coords_to_index(1, 1));
         assert_eq!(63, Board::coords_to_index(7, 7));
+    }
+}
+
+#[cfg(test)]
+mod load_tests {
+    use crate::board::{Piece, PieceType, PieceColor};
+
+    #[test]
+    fn no_pieces() {
+        let pieces = Piece::from_fen("8/8/8/8/8/8/8/8");
+        for &piece in pieces.iter() {
+            assert_eq!(None, piece);
+        }
+    }
+
+    #[test]
+    fn one_piece() {
+        let pieces = Piece::from_fen("8/8/7q/8/8/8/8/8");
+        let piece = pieces[47];
+
+        assert_ne!(None, piece);
+        assert_eq!(PieceType::Queen, piece.unwrap().piece_type)
+    }
+
+    #[test]
+    fn default_board() {
+        let pieces = Piece::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        assert_eq!(Piece { piece_type: PieceType::Rook, piece_color: PieceColor::WHITE }, pieces[0].unwrap());
+        assert_eq!(Piece { piece_type: PieceType::Knight, piece_color: PieceColor::WHITE }, pieces[1].unwrap());
+        assert_eq!(Piece { piece_type: PieceType::Queen, piece_color: PieceColor::WHITE }, pieces[3].unwrap());
+        assert_eq!(Piece { piece_type: PieceType::Pawn, piece_color: PieceColor::WHITE }, pieces[8].unwrap());
+        assert_eq!(None, pieces[16]);
+        assert_eq!(Piece { piece_type: PieceType::Pawn, piece_color: PieceColor::BLACK }, pieces[48].unwrap());
+        assert_eq!(Piece { piece_type: PieceType::Rook, piece_color: PieceColor::BLACK }, pieces[56].unwrap());
+        assert_eq!(Piece { piece_type: PieceType::Queen, piece_color: PieceColor::BLACK }, pieces[59].unwrap());
+        assert_eq!(Piece { piece_type: PieceType::Knight, piece_color: PieceColor::BLACK }, pieces[62].unwrap());
+        assert_eq!(Piece { piece_type: PieceType::Rook, piece_color: PieceColor::BLACK }, pieces[63].unwrap());
     }
 }

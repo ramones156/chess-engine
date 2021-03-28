@@ -1,6 +1,6 @@
 extern crate find_folder;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use opengl_graphics::Texture;
 use piston_window::TextureSettings;
 use std::collections::HashMap;
@@ -13,7 +13,6 @@ const SIZE: usize = 64;
 pub enum PieceColor {
     BLACK,
     WHITE,
-    NEITHER,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -24,7 +23,6 @@ pub enum PieceType {
     Bishop,
     Knight,
     Pawn,
-    EMPTY,
 }
 #[derive(Clone, Copy, PartialEq)]
 pub struct Piece {
@@ -61,15 +59,11 @@ impl Piece {
             (PieceType::Bishop, PieceColor::WHITE) => Piece::load_resources("bishop_white.png"),
             (PieceType::Knight, PieceColor::WHITE) => Piece::load_resources("knight_white.png"),
             (PieceType::Pawn, PieceColor::WHITE) => Piece::load_resources("pawn_white.png"),
-            _ => Piece::load_resources("")
         };
 
         Texture::from_path(path, &TextureSettings::new()).unwrap()
     }
-    pub fn default_board() -> [Piece; SIZE] {
-        Piece::load_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-    }
-    pub fn load_from_fen(fen: &str) -> [Piece; SIZE] {
+    pub fn from_fen(fen: &str) -> [Option<Piece>;SIZE] {
         let dictionary: HashMap<char, Piece> = [
             ('k', Piece::new(PieceType::King, PieceColor::BLACK)),
             ('p', Piece::new(PieceType::Pawn, PieceColor::BLACK)),
@@ -85,22 +79,24 @@ impl Piece {
             ('Q', Piece::new(PieceType::Queen, PieceColor::WHITE)),
         ].iter().cloned().collect();
 
-        let mut pieces = [Piece::default(); SIZE];
+        let mut pieces = [None; SIZE];
         let mut fen = fen.split(' ');
         let board = fen.next().unwrap();
-        let mut i: usize = 64;
+        let mut rank: usize = 7;
+        let mut file: usize = 0;
         for symbol in board.chars() {
-            if symbol.is_numeric() {
-                i -= symbol.to_digit(10).unwrap() as usize;
+            if symbol == '/' {
+                file = 0;
+                rank -= 1;
+            } else if symbol.is_numeric() {
+                file += symbol.to_digit(10).unwrap() as usize;
             } else if dictionary.contains_key(&symbol) {
-                // println!("Piece at index: {}", i);
-                i -= 1;
-                pieces[i] = *dictionary.get(&symbol).unwrap();
+                pieces[rank * 8 + file] = Some(*dictionary.get(&symbol).unwrap());
+                file += 1;
             }
         }
         pieces
     }
-
     fn load_resources(filename:&str) -> PathBuf {
         // See <https://doc.rust-lang.org/stable/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-crates>
         let base_dir = option_env!("CARGO_MANIFEST_DIR").map_or_else(|| {
@@ -113,7 +109,4 @@ impl Piece {
     }
 }
 
-impl Default for Piece {
-    fn default() -> Self { Piece { piece_type: PieceType::EMPTY, piece_color: PieceColor::NEITHER } }
-}
 
