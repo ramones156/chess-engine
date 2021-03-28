@@ -5,6 +5,7 @@ use graphics::rectangle::square;
 use std::cmp::min;
 use self::piston_window::{RenderArgs, GenericEvent, Button, MouseButton, OpenGL};
 use opengl_graphics::GlGraphics;
+use std::ops::Sub;
 
 extern crate piston_window;
 
@@ -69,23 +70,22 @@ impl Board {
                 let translation = &(i as isize - orig as isize);
                 // println!("trans: {}", translation);
                 let target: Option<Piece> = self.pieces[i];
-                if moves.contains(translation) {
+                if !moves.contains(translation) {
+                    println!("Move doesn't exist");
+                    self.pieces[orig] = self.selected_piece;
+                } else {
                     if target == None || (target.unwrap().piece_color != self.selected_piece.unwrap().piece_color) {
                         self.draw_square(args, self.selected_piece, rank, file);
                         // Input piece and remove from original
                         self.pieces[orig] = None;
                         self.pieces[i] = self.selected_piece;
                     }
-                } else {
-                    println!("Illegal move");
-                    self.pieces[orig] = self.selected_piece;
                 }
             }
-                // empty selection and release
-                self.selected_piece = None;
-                self.selected = None;
-                self.released = None;
-
+            // empty selection and release
+            self.selected_piece = None;
+            self.selected = None;
+            self.released = None;
         }
     }
     pub fn event<E: GenericEvent>(&mut self, e: &E) {
@@ -185,7 +185,19 @@ impl Board {
             min(south, west),
         ];
         match piece.piece_type {
-            PieceType::Knight => {}
+            PieceType::Knight => {
+                let offsets: [[isize; 2]; 8] = [[-2, 1], [-1, 2], [2, -1], [1, -2], [1, 2], [2, 1], [-1, -2], [-2, -1]];
+                for d in 0..8 {
+                    let (x, y) = (((rank as isize) + offsets[d][0]) as usize, ((file as isize) + offsets[d][1]) as usize);
+                    if x < 8 && y < 8 {
+                        let i = Board::coords_to_index(x, y);
+                        let target = self.pieces[i];
+                        if i < 64 && target == None {
+                            moves.push((offsets[d][0] + offsets[d][1] * 8));
+                        }
+                    }
+                }
+            }
             PieceType::King => moves = Vec::from(&OFFSETS[0..8]),
             PieceType::Queen => moves = self.sliding_piecs_moves(&direction_to_edge[0..8], &OFFSETS[0..8]),
             PieceType::Rook => moves = self.sliding_piecs_moves(&direction_to_edge[0..4], &OFFSETS[0..8]),
